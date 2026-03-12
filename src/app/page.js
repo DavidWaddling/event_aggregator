@@ -4,17 +4,20 @@ import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import EventCard from "@/components/EventCard";
 import BottomNav from "@/components/BottomNav";
+import { supabase } from "@/lib/supabase";
 
 export default function DiscoveryPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [savedEventIds, setSavedEventIds] = useState([]);
+  const [user, setUser] = useState(null);
 
-  const fetchEvents = async () => {
+  const fetchEvents = async (filterParam = activeFilter) => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/events");
+      const res = await fetch(`/api/events?filter=${filterParam}`);
       const data = await res.json();
       setEvents(data.events || []);
     } catch (err) {
@@ -24,22 +27,66 @@ export default function DiscoveryPage() {
     }
   };
 
+  const handleFilterClick = (filter) => {
+    setActiveFilter(filter);
+    fetchEvents(filter);
+  };
+
+  const fetchUserData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setUser(user);
+
+    if (user) {
+      const { data, error } = await supabase
+        .from('saved_events')
+        .select('event_id')
+        .eq('user_id', user.id);
+      
+      if (!error && data) {
+        setSavedEventIds(data.map(item => item.event_id));
+      }
+    } else {
+      const saved = JSON.parse(localStorage.getItem("savedEvents") || "[]");
+      setSavedEventIds(saved.map(e => e.id));
+    }
+  };
+
   useEffect(() => {
     fetchEvents();
-    // Load saved events from localStorage
-    const saved = JSON.parse(localStorage.getItem("savedEvents") || "[]");
-    setSavedEventIds(saved.map(e => e.id));
+    fetchUserData();
   }, []);
   
-  const toggleSave = (event) => {
-    let saved = JSON.parse(localStorage.getItem("savedEvents") || "[]");
-    if (savedEventIds.includes(event.id)) {
-      saved = saved.filter(e => e.id !== event.id);
+  const toggleSave = async (event) => {
+    if (user) {
+      if (savedEventIds.includes(event.id)) {
+        const { error } = await supabase
+          .from('saved_events')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('event_id', event.id);
+        
+        if (!error) {
+          setSavedEventIds(prev => prev.filter(id => id !== event.id));
+        }
+      } else {
+        const { error } = await supabase
+          .from('saved_events')
+          .insert({ user_id: user.id, event_id: event.id });
+        
+        if (!error) {
+          setSavedEventIds(prev => [...prev, event.id]);
+        }
+      }
     } else {
-      saved.push(event);
+      let saved = JSON.parse(localStorage.getItem("savedEvents") || "[]");
+      if (savedEventIds.includes(event.id)) {
+        saved = saved.filter(e => e.id !== event.id);
+      } else {
+        saved.push(event);
+      }
+      localStorage.setItem("savedEvents", JSON.stringify(saved));
+      setSavedEventIds(saved.map(e => e.id));
     }
-    localStorage.setItem("savedEvents", JSON.stringify(saved));
-    setSavedEventIds(saved.map(e => e.id));
   };
 
   const filteredEvents = events.filter(event => 
@@ -70,13 +117,28 @@ export default function DiscoveryPage() {
 
         {/* Filter Pills */}
         <div className="flex gap-3 px-4 pb-6 overflow-x-auto no-scrollbar">
-          <button className="whitespace-nowrap px-5 py-2 rounded-full bg-primary text-white text-sm font-semibold shadow-lg shadow-primary/20 transition-all">
+          <button 
+            onClick={() => handleFilterClick("all")}
+            className={`whitespace-nowrap px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+              activeFilter === "all" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+            }`}
+          >
             All Events
           </button>
-          <button className="whitespace-nowrap px-5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
+          <button 
+            onClick={() => handleFilterClick("weekend")}
+            className={`whitespace-nowrap px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+              activeFilter === "weekend" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+            }`}
+          >
             This Weekend
           </button>
-          <button className="whitespace-nowrap px-5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
+          <button 
+            onClick={() => handleFilterClick("month")}
+            className={`whitespace-nowrap px-5 py-2 rounded-full text-sm font-semibold transition-all ${
+              activeFilter === "month" ? "bg-primary text-white shadow-lg shadow-primary/20" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+            }`}
+          >
             This Month
           </button>
         </div>
@@ -87,7 +149,7 @@ export default function DiscoveryPage() {
               {isLoading ? "Syncing..." : `Showing ${filteredEvents.length} events`}
             </h2>
             <button 
-              onClick={fetchEvents}
+              onClick={() => fetchEvents()}
               className="text-primary text-sm font-semibold hover:underline flex items-center gap-1"
               disabled={isLoading}
             >
@@ -125,3 +187,5 @@ export default function DiscoveryPage() {
     </div>
   );
 }
+
+

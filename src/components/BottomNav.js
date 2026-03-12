@@ -10,7 +10,6 @@ export default function BottomNav() {
     { label: "Explore", icon: "explore", path: "/" },
     { label: "Saved", icon: "favorite", path: "/saved" },
     { label: "Profile", icon: "person", path: "/profile" },
-    { label: "Log Out", icon: "logout", path: "/logout", color: "text-red-500" },
   ];
 
   return (
