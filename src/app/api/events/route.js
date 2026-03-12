@@ -11,23 +11,29 @@ export async function GET() {
       const torontoHtml = await torontoResponse.text();
       const $ = cheerio.load(torontoHtml);
 
-      // Analyze page structure and get events
-      // Assuming articles or divs with specific classes contain events
-      $(".listing-item").each((i, el) => {
-        const title = $(el).find(".listing-item-title, h3").text().trim();
-        const date = $(el).find(".listing-item-date").text().trim() || "TBD";
-        const location = $(el).find(".listing-item-location").text().trim() || "Toronto";
-        const url = $(el).find("a").attr("href") || "";
+      // Analyze page structure and get events (updated selectors)
+      $(".listing-item, .card, .event-card").each((i, el) => {
+        const title = $(el).find(".listing-item-title, h3, .title").text().trim();
+        const date = $(el).find(".listing-item-date, .date, time").text().trim() || "TBD";
+        const location = $(el).find(".listing-item-location, .location, .venue").text().trim() || "Toronto";
+        const url = $(el).find("a").first().attr("href") || "";
+        const imageUrl = $(el).find("img").attr("src") || "";
+        const description = $(el).find(".description, .summary, p").first().text().trim();
+        
+        // Filtering Sold Out from text indicators
+        const textContent = $(el).text().toLowerCase();
+        const isSoldOut = textContent.includes("sold out") || textContent.includes("cancelled");
 
-        if (title) {
+        if (title && !isSoldOut) {
           events.push({
-            id: `dt-${i}`,
+            id: `dt-${i}-${title.substring(0, 5).toLowerCase().replace(/\s/g, "")}`,
             title,
             location,
             date,
             price: "Check website",
             category: "Toronto Event",
-            imageIcon: "🍁",
+            imageUrl: imageUrl.startsWith("http") ? imageUrl : `https://www.destinationtoronto.com${imageUrl}`,
+            description: description || "Join us for this exciting Toronto event!",
             sourceUrl: url.startsWith("http") ? url : `https://www.destinationtoronto.com${url}`
           });
         }
@@ -37,30 +43,34 @@ export async function GET() {
     console.error("Error scraping Destination Toronto:", error);
   }
 
-  // Scrape Eventbrite (Note: Eventbrite data is heavily JS driven, so server scraping pure HTML may miss data, but we can try metadata or server-rendered parts)
+  // Scrape Eventbrite
   try {
     const eventbriteResponse = await fetch("https://www.eventbrite.ca/d/canada--toronto/events--this-weekend/");
     if (eventbriteResponse.ok) {
       const ebHtml = await eventbriteResponse.text();
       const $ = cheerio.load(ebHtml);
 
-      // Basic extraction attempt
-      $(".discover-search-desktop-card").each((i, el) => {
+      $(".discover-search-desktop-card, .event-card").each((i, el) => {
         const title = $(el).find("h3").text().trim();
-        const location = $(el).find(".event-card__subtitle").last().text().trim() || "Toronto, ON";
+        const locationText = $(el).find(".event-card__subtitle").last().text().trim() || "Toronto, ON";
         const date = $(el).find(".event-card__subtitle").first().text().trim() || "This Weekend";
         const price = $(el).find(".event-card__price").text().trim() || "Check website";
         const url = $(el).find("a").attr("href") || "";
+        const imageUrl = $(el).find("img").attr("src") || "";
+        
+        const textContent = $(el).text().toLowerCase();
+        const isSoldOut = textContent.includes("sold out") || textContent.includes("waitlist");
 
-        if (title) {
+        if (title && !isSoldOut) {
           events.push({
-            id: `eb-${i}`,
+            id: `eb-${i}-${title.substring(0, 5).toLowerCase().replace(/\s/g, "")}`,
             title,
-            location,
+            location: locationText,
             date,
             price,
             category: "Eventbrite",
-            imageIcon: "🎟️",
+            imageUrl: imageUrl,
+            description: "Explore this upcoming Eventbrite experience in Toronto.",
             sourceUrl: url
           });
         }
